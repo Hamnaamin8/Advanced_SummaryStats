@@ -1,198 +1,261 @@
-# streamlit_advanced_eda.py
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
+import numpy as np
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+import plotly.express as px
 
-sns.set(style="whitegrid")
-st.set_page_config(page_title="Notebook-like EDA App", layout="wide")
+# Title
+st.title("Advanced Data Analysis App")
 
-st.title("Notebook-style Advanced EDA App 🚀")
-
+# File uploader
 uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
 
-def basic_info(df):
-    st.markdown("**Shape & Basic Info**")
-    st.write(f"Rows: {df.shape[0]} — Columns: {df.shape[1]}")
-    with st.expander("Show dtypes & non-null counts"):
-        info_df = pd.DataFrame({
-            "dtype": df.dtypes.astype(str),
-            "non-null count": df.notnull().sum(),
-            "null count": df.isnull().sum()
-        })
-        st.dataframe(info_df)
-
-    with st.expander("Head (5 rows)"):
-        st.dataframe(df.head())
-
-    with st.expander("Descriptive statistics"):
-        st.text(df.describe(include="all").transpose().to_string())
-
-def detect_columns(df):
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    cat_cols = df.select_dtypes(exclude=np.number).columns.tolist()
-    return numeric_cols, cat_cols
-
-def plot_numeric_overview(df, numeric_cols):
-    st.subheader("Numeric Columns Overview")
-    for col in numeric_cols:
-        st.markdown(f"**{col}**")
-        c1, c2, c3 = st.columns([1,1,1])
-        # Histogram (plotly)
-        with c1:
-            fig = px.histogram(df, x=col, nbins=30, title=f"Histogram of {col}", marginal="rug")
-            st.plotly_chart(fig, use_container_width=True)
-        # Box + Violin (plotly)
-        with c2:
-            fig2 = px.box(df, y=col, points="outliers", title=f"Boxplot of {col}")
-            st.plotly_chart(fig2, use_container_width=True)
-        with c3:
-            fig3 = px.violin(df, y=col, box=True, points="all", title=f"Violin of {col}")
-            st.plotly_chart(fig3, use_container_width=True)
-
-def plot_categorical_overview(df, cat_cols):
-    st.subheader("Categorical Columns Overview")
-    for col in cat_cols:
-        st.markdown(f"**{col}**")
-        vc = df[col].value_counts(dropna=False)
-        c1, c2 = st.columns([1,1])
-        with c1:
-            fig = px.bar(x=vc.index.astype(str), y=vc.values, title=f"Bar chart of {col}", labels={"x":col, "y":"count"})
-            st.plotly_chart(fig, use_container_width=True)
-        with c2:
-            # Pie (top 10)
-            top = vc[:10]
-            fig2 = px.pie(values=top.values, names=top.index.astype(str), title=f"Pie chart (top 10) of {col}")
-            st.plotly_chart(fig2, use_container_width=True)
-
-def correlation_and_pairwise(df, numeric_cols):
-    if len(numeric_cols) < 2:
-        st.info("At least 2 numeric columns required for correlation and pairwise visuals.")
-        return
-    st.subheader("Correlation Matrix")
-    corr = df[numeric_cols].corr()
-    fig, ax = plt.subplots(figsize=(8,6))
-    sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
-    st.pyplot(fig)
-
-    st.subheader("Interactive Pairwise (Scatter Matrix)")
-    fig2 = px.scatter_matrix(df, dimensions=numeric_cols, title="Scatter matrix")
-    st.plotly_chart(fig2, use_container_width=True)
-
-def pca_visualization(df, numeric_cols):
-    st.subheader("PCA (2 components) visualization")
-    if len(numeric_cols) < 2:
-        st.info("Need at least 2 numeric columns for PCA.")
-        return
-    scaled = StandardScaler().fit_transform(df[numeric_cols].dropna())
-    pca = PCA(n_components=2)
-    pca_res = pca.fit_transform(scaled)
-    pca_df = pd.DataFrame(pca_res, columns=["PC1","PC2"])
-    maybe_label = None
-    # If there's a categorical column, try to use the first one for coloring
-    cat_cols = df.select_dtypes(exclude=np.number).columns.tolist()
-    if len(cat_cols) >= 1:
-        maybe_label = df[cat_cols[0]].astype(str).reset_index(drop=True)
-        pca_df["label"] = maybe_label
-        fig = px.scatter(pca_df, x="PC1", y="PC2", color="label", title="PCA 2D colored by " + cat_cols[0])
-    else:
-        fig = px.scatter(pca_df, x="PC1", y="PC2", title="PCA 2D (no categorical label found)")
-    st.plotly_chart(fig, use_container_width=True)
-
-def generate_pdf_report(df, summary_text):
+# Function to generate PDF report
+def generate_pdf_report(df, summary):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
+
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(180, 770, "Notebook-style EDA Report")
-    c.setFont("Helvetica", 10)
-    c.drawString(30, 740, f"Rows: {df.shape[0]}  Columns: {df.shape[1]}")
-    text = c.beginText(30, 720)
+    c.drawString(200, 770, "EDA Report")
+
+    c.setFont("Helvetica", 12)
+    c.drawString(30, 740, f"Dataset Shape: {df.shape[0]} rows, {df.shape[1]} columns")
+
+    # Add Summary Stats
+    c.drawString(30, 720, "Summary Statistics:")
+    text = c.beginText(30, 700)
     text.setFont("Helvetica", 9)
-    for line in summary_text.split("\n")[:45]:
+    for line in summary.split("\n")[:40]:  # limit rows
         text.textLine(line)
     c.drawText(text)
+
     c.showPage()
     c.save()
     buffer.seek(0)
     return buffer
 
+
 if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-    except Exception as e:
-        st.error(f"Error reading CSV: {e}")
-        st.stop()
+    df = pd.read_csv(uploaded_file)
 
-    st.sidebar.header("Preprocessing & Options")
-    # Missing value strategy
-    mv_strategy = st.sidebar.selectbox("Missing Value Handling", ["Show as-is", "Drop rows with any NA", "Fill NA (median for numeric, mode for categorical)"])
-    if mv_strategy == "Drop rows with any NA":
-        df = df.dropna()
-    elif mv_strategy == "Fill NA (median for numeric, mode for categorical)":
-        for c in df.columns:
-            if pd.api.types.is_numeric_dtype(df[c]):
-                df[c] = df[c].fillna(df[c].median())
-            else:
-                df[c] = df[c].fillna(df[c].mode().iloc[0] if not df[c].mode().empty else "")
+    # Show dataset
+    st.subheader("Explore Dataset")
+    st.write("Full Dataset:")
+    st.write(df)
 
-    basic_info(df)
-    numeric_cols, cat_cols = detect_columns(df)
-
-    st.markdown("---")
-    st.sidebar.header("Auto EDA Controls")
-    auto_eda = st.sidebar.checkbox("Run Auto EDA (full notebook-like workflow)", value=True)
-    if auto_eda:
-        if numeric_cols:
-            plot_numeric_overview(df, numeric_cols)
-        if cat_cols:
-            plot_categorical_overview(df, cat_cols)
-        correlation_and_pairwise(df, numeric_cols)
-        pca_visualization(df, numeric_cols)
-    else:
-        # Manual selection mode
-        st.subheader("Manual Analysis Mode")
-        cols = st.multiselect("Select columns to analyze", df.columns.tolist())
-        if cols:
-            sel_num = df[cols].select_dtypes(include=np.number).columns.tolist()
-            sel_cat = df[cols].select_dtypes(exclude=np.number).columns.tolist()
-            if sel_num:
-                plot_numeric_overview(df[cols], sel_num)
-            if sel_cat:
-                plot_categorical_overview(df[cols], sel_cat)
-            correlation_and_pairwise(df, sel_num)
-
-    # Quick insights (automated)
-    st.markdown("---")
-    st.subheader("Quick Automated Insights")
-    with st.expander("Top quick checks"):
-        # Missing
-        st.write("Missing values per column:")
-        st.write(df.isnull().sum())
-        # Duplicates
-        dup_count = df.duplicated().sum()
-        st.write(f"Duplicate rows: {dup_count}")
-        # Skewness for numeric
-        if numeric_cols:
-            skewness = df[numeric_cols].skew().sort_values(ascending=False)
-            st.write("Skewness (numeric columns):")
-            st.write(skewness)
-
-    # Download PDF report
-    st.markdown("---")
-    st.subheader("Download Report")
+    # Show summary stats
+    st.subheader("Summary Statistics")
     summary_stats = df.describe(include="all").to_string()
+    st.text(summary_stats)
+
+    # Auto EDA Mode
+    st.subheader("Exploratory Data Analysis Options")
+    auto_mode = st.checkbox("Enable Auto EDA Mode (Generate All Suitable Charts Automatically)")
+
+    if auto_mode:
+        st.success("Auto EDA Mode Enabled ✅")
+
+        numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+        cat_cols = df.select_dtypes(exclude=np.number).columns.tolist()
+
+        # Numeric Columns Analysis
+        if numeric_cols:
+            st.subheader("Numeric Columns Analysis")
+            for col in numeric_cols:
+                st.markdown(f"### {col}")
+
+                # Histogram
+                fig, ax = plt.subplots()
+                ax.hist(df[col].dropna(), bins=20, color="skyblue", edgecolor="black")
+                ax.set_title(f"Histogram of {col}")
+                st.pyplot(fig)
+
+                # Boxplot
+                fig, ax = plt.subplots()
+                sns.boxplot(y=df[col], ax=ax, color="lightgreen")
+                ax.set_title(f"Boxplot of {col}")
+                st.pyplot(fig)
+
+                # Line Chart
+                fig, ax = plt.subplots()
+                df[col].reset_index(drop=True).plot(kind="line", ax=ax, color="purple")
+                ax.set_title(f"Line Chart of {col}")
+                st.pyplot(fig)
+
+        # Categorical Columns Analysis
+        if cat_cols:
+            st.subheader("Categorical Columns Analysis")
+            for col in cat_cols:
+                st.markdown(f"### {col}")
+
+                # Bar Chart
+                fig, ax = plt.subplots()
+                df[col].value_counts().plot(kind="bar", ax=ax, color="orange", edgecolor="black")
+                ax.set_title(f"Bar Chart of {col}")
+                st.pyplot(fig)
+
+                # Pie Chart
+                fig, ax = plt.subplots()
+                df[col].value_counts().plot(kind="pie", autopct='%1.1f%%', ax=ax, colormap="tab20")
+                ax.set_ylabel("")
+                ax.set_title(f"Pie Chart of {col}")
+                st.pyplot(fig)
+
+        # Correlation Analysis
+        if len(numeric_cols) >= 2:
+            st.subheader("Relationships Between Numeric Variables")
+
+            # Scatterplot
+            fig, ax = plt.subplots()
+            ax.scatter(df[numeric_cols[0]], df[numeric_cols[1]], alpha=0.6, color="blue")
+            ax.set_xlabel(numeric_cols[0])
+            ax.set_ylabel(numeric_cols[1])
+            ax.set_title(f"Scatterplot of {numeric_cols[0]} vs {numeric_cols[1]}")
+            st.pyplot(fig)
+
+            # Heatmap
+            fig, ax = plt.subplots()
+            corr = df[numeric_cols].corr()
+            sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+            ax.set_title("Correlation Heatmap")
+            st.pyplot(fig)
+
+            # Pairplot
+            st.subheader("Pairplot of Numeric Columns")
+            pairplot_fig = sns.pairplot(df[numeric_cols], diag_kind="hist", corner=True)
+            st.pyplot(pairplot_fig)
+
+    else:
+        # Manual Mode
+        st.subheader("Manual Column-wise Analysis")
+        columns = st.multiselect("Select one or more columns for analysis", df.columns)
+
+        if columns:
+            for column in columns:
+                st.markdown(f"### Analysis of **{column}**")
+
+                if pd.api.types.is_numeric_dtype(df[column]):
+                    st.write(df[column].describe())
+
+                    # Histogram
+                    fig, ax = plt.subplots()
+                    ax.hist(df[column].dropna(), bins=20, color="skyblue", edgecolor="black")
+                    ax.set_title(f"Histogram of {column}")
+                    st.pyplot(fig)
+
+                    # Boxplot
+                    fig, ax = plt.subplots()
+                    sns.boxplot(y=df[column], ax=ax, color="lightgreen")
+                    ax.set_title(f"Boxplot of {column}")
+                    st.pyplot(fig)
+
+                    # Line Chart
+                    fig, ax = plt.subplots()
+                    df[column].reset_index(drop=True).plot(kind="line", ax=ax, color="purple")
+                    ax.set_title(f"Line Chart of {column}")
+                    st.pyplot(fig)
+
+                else:
+                    st.write(df[column].value_counts())
+
+                    # Bar Chart
+                    fig, ax = plt.subplots()
+                    df[column].value_counts().plot(kind="bar", ax=ax, color="orange", edgecolor="black")
+                    ax.set_title(f"Bar Chart of {column}")
+                    st.pyplot(fig)
+
+                    # Pie Chart
+                    fig, ax = plt.subplots()
+                    df[column].value_counts().plot(kind="pie", autopct='%1.1f%%', ax=ax, colormap="tab20")
+                    ax.set_ylabel("")
+                    ax.set_title(f"Pie Chart of {column}")
+                    st.pyplot(fig)
+
+            # Extra charts
+            numeric_cols = df[columns].select_dtypes(include=np.number).columns.tolist()
+            if len(numeric_cols) >= 2:
+                st.subheader("Relationships Between Selected Numeric Variables")
+
+                # Scatterplot
+                fig, ax = plt.subplots()
+                ax.scatter(df[numeric_cols[0]], df[numeric_cols[1]], alpha=0.6, color="blue")
+                ax.set_xlabel(numeric_cols[0])
+                ax.set_ylabel(numeric_cols[1])
+                ax.set_title(f"Scatterplot of {numeric_cols[0]} vs {numeric_cols[1]}")
+                st.pyplot(fig)
+
+                # Heatmap
+                fig, ax = plt.subplots()
+                corr = df[numeric_cols].corr()
+                sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+                ax.set_title("Correlation Heatmap")
+                st.pyplot(fig)
+
+                # Pairplot
+                st.subheader("Pairplot of Selected Numeric Columns")
+                pairplot_fig = sns.pairplot(df[numeric_cols], diag_kind="hist", corner=True)
+                st.pyplot(pairplot_fig)
+
+    # ==============================
+    # 🔍 Relationship Analysis Section
+    # ==============================
+    st.header("Relationship Analysis")
+
+    selected_columns = st.multiselect(
+        "Select 2 or more columns to explore relationships",
+        df.columns
+    )
+
+    if len(selected_columns) == 2:
+        col_x, col_y = selected_columns
+        st.write(f"### Scatterplot: {col_x} vs {col_y}")
+
+        fig, ax = plt.subplots()
+        sns.scatterplot(data=df, x=col_x, y=col_y, ax=ax, hue=None)
+        ax.set_title(f"{col_x} vs {col_y}")
+        st.pyplot(fig)
+
+        # If one variable is categorical → boxplot
+        if pd.api.types.is_numeric_dtype(df[col_x]) and not pd.api.types.is_numeric_dtype(df[col_y]):
+            st.write(f"### Boxplot of {col_x} by {col_y}")
+            fig, ax = plt.subplots()
+            sns.boxplot(data=df, x=col_y, y=col_x, ax=ax)
+            st.pyplot(fig)
+
+        if pd.api.types.is_numeric_dtype(df[col_y]) and not pd.api.types.is_numeric_dtype(df[col_x]):
+            st.write(f"### Boxplot of {col_y} by {col_x}")
+            fig, ax = plt.subplots()
+            sns.boxplot(data=df, x=col_x, y=col_y, ax=ax)
+            st.pyplot(fig)
+
+    elif len(selected_columns) > 2:
+        st.write(f"### Pairplot of {', '.join(selected_columns)}")
+        pairplot_fig = sns.pairplot(df[selected_columns].dropna(), diag_kind="hist", corner=True)
+        st.pyplot(pairplot_fig)
+
+        st.write("### Correlation Heatmap")
+        fig, ax = plt.subplots()
+        corr = df[selected_columns].corr(numeric_only=True)
+        sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
+
+        # 3D scatter if exactly 3 numeric
+        if len(selected_columns) == 3 and all(pd.api.types.is_numeric_dtype(df[c]) for c in selected_columns):
+            st.write(f"### 3D Scatterplot of {selected_columns[0]}, {selected_columns[1]}, {selected_columns[2]}")
+            fig = px.scatter_3d(df, x=selected_columns[0], y=selected_columns[1], z=selected_columns[2])
+            st.plotly_chart(fig, use_container_width=True)
+
+    # --- Download Report ---
+    st.subheader("Download EDA Report")
     pdf_buffer = generate_pdf_report(df, summary_stats)
     st.download_button(
         label="Download EDA Report as PDF",
         data=pdf_buffer,
-        file_name="notebook_style_EDA_report.pdf",
+        file_name="EDA_Report.pdf",
         mime="application/pdf"
     )
